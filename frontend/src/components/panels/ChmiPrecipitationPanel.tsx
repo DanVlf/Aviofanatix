@@ -33,6 +33,12 @@ const DEFAULT_BOUNDS: RadarBounds = {
   north: 52.167,
   east: 20.77,
 };
+const CZECH_FOCUS_BOUNDS: RadarBounds = {
+  south: 48.35,
+  west: 11.7,
+  north: 51.2,
+  east: 19.2,
+};
 
 const formatDateTime = (value: string | null) => {
   if (!value) return "--";
@@ -75,10 +81,10 @@ const chooseZoom = (bounds: RadarBounds, width: number, height: number, padding:
   for (let zoom = 10; zoom >= 5; zoom -= 1) {
     const northWest = projectWebMercator(bounds.north, bounds.west, zoom);
     const southEast = projectWebMercator(bounds.south, bounds.east, zoom);
-    const overlayWidth = southEast.x - northWest.x;
-    const overlayHeight = southEast.y - northWest.y;
+    const viewportWidth = southEast.x - northWest.x;
+    const viewportHeight = southEast.y - northWest.y;
 
-    if (overlayWidth <= width - padding * 2 && overlayHeight <= height - padding * 2) {
+    if (viewportWidth <= width - padding * 2 && viewportHeight <= height - padding * 2) {
       return zoom;
     }
   }
@@ -113,21 +119,25 @@ function useElementSize<T extends HTMLElement>() {
   return { ref, size };
 }
 
-const buildMapLayout = (bounds: RadarBounds, width: number, height: number): LayoutSpec | null => {
+const buildMapLayout = (overlayBounds: RadarBounds, viewportBounds: RadarBounds, width: number, height: number): LayoutSpec | null => {
   if (width < 32 || height < 32) {
     return null;
   }
 
-  const padding = 16;
-  const zoom = chooseZoom(bounds, width, height, padding);
-  const northWest = projectWebMercator(bounds.north, bounds.west, zoom);
-  const southEast = projectWebMercator(bounds.south, bounds.east, zoom);
-  const overlayWidth = southEast.x - northWest.x;
-  const overlayHeight = southEast.y - northWest.y;
-  const extraX = Math.max(0, width - overlayWidth);
-  const extraY = Math.max(0, height - overlayHeight);
-  const originX = northWest.x - extraX / 2;
-  const originY = northWest.y - extraY / 2;
+  const padding = 8;
+  const zoom = chooseZoom(viewportBounds, width, height, padding);
+  const viewportNorthWest = projectWebMercator(viewportBounds.north, viewportBounds.west, zoom);
+  const viewportSouthEast = projectWebMercator(viewportBounds.south, viewportBounds.east, zoom);
+  const viewportWidth = viewportSouthEast.x - viewportNorthWest.x;
+  const viewportHeight = viewportSouthEast.y - viewportNorthWest.y;
+  const overlayNorthWest = projectWebMercator(overlayBounds.north, overlayBounds.west, zoom);
+  const overlaySouthEast = projectWebMercator(overlayBounds.south, overlayBounds.east, zoom);
+  const overlayWidth = overlaySouthEast.x - overlayNorthWest.x;
+  const overlayHeight = overlaySouthEast.y - overlayNorthWest.y;
+  const extraX = Math.max(0, width - viewportWidth);
+  const extraY = Math.max(0, height - viewportHeight);
+  const originX = viewportNorthWest.x - extraX / 2;
+  const originY = viewportNorthWest.y - extraY / 2;
   const endX = originX + width;
   const endY = originY + height;
 
@@ -155,8 +165,8 @@ const buildMapLayout = (bounds: RadarBounds, width: number, height: number): Lay
 
   return {
     tiles,
-    overlayLeft: northWest.x - originX,
-    overlayTop: northWest.y - originY,
+    overlayLeft: overlayNorthWest.x - originX,
+    overlayTop: overlayNorthWest.y - originY,
     overlayWidth,
     overlayHeight,
     zoom,
@@ -166,9 +176,12 @@ const buildMapLayout = (bounds: RadarBounds, width: number, height: number): Lay
 export function ChmiPrecipitationPanel({ snapshot, loading }: Props) {
   const statusIntent = snapshot?.ok ? (snapshot.stale ? "warning" : "success") : "danger";
   const statusLabel = snapshot?.ok ? (snapshot.stale ? "cached" : "live") : "offline";
-  const bounds = snapshot?.bounds ?? DEFAULT_BOUNDS;
+  const overlayBounds = snapshot?.bounds ?? DEFAULT_BOUNDS;
   const { ref, size } = useElementSize<HTMLDivElement>();
-  const layout = useMemo(() => buildMapLayout(bounds, size.width, size.height), [bounds, size.height, size.width]);
+  const layout = useMemo(
+    () => buildMapLayout(overlayBounds, CZECH_FOCUS_BOUNDS, size.width, size.height),
+    [overlayBounds, size.height, size.width],
+  );
   const animationFrames = useMemo(() => {
     const frames = snapshot?.frames ?? [];
     return [...frames].reverse();
@@ -201,7 +214,7 @@ export function ChmiPrecipitationPanel({ snapshot, loading }: Props) {
       : null;
 
   return (
-    <div className="panel panel--wide precipitation-panel">
+    <div className="panel panel--wide precipitation-panel precipitation-panel--resizable">
       <div className="panel-header">
         <h3>CHMI Live Radar</h3>
         <div className="panel-tags">
@@ -210,90 +223,92 @@ export function ChmiPrecipitationPanel({ snapshot, loading }: Props) {
         </div>
       </div>
 
-      {loading && snapshot === null ? (
-        <div className="precip-loading">
-          <Spinner size={28} />
-        </div>
-      ) : snapshot?.ok && imageSrc ? (
-        <>
-          <div className="radar-map-stage" ref={ref}>
-            {layout ? (
-              <>
-                <div className="radar-map-canvas">
-                  {layout.tiles.map((tile) => (
+      <div className="precipitation-panel-body">
+        {loading && snapshot === null ? (
+          <div className="precip-loading">
+            <Spinner size={28} />
+          </div>
+        ) : snapshot?.ok && imageSrc ? (
+          <>
+            <div className="radar-map-stage" ref={ref}>
+              {layout ? (
+                <>
+                  <div className="radar-map-canvas">
+                    {layout.tiles.map((tile) => (
+                      <img
+                        key={tile.key}
+                        className="radar-map-tile"
+                        src={tile.src}
+                        alt=""
+                        aria-hidden="true"
+                        style={{ left: `${tile.left}px`, top: `${tile.top}px` }}
+                      />
+                    ))}
+
                     <img
-                      key={tile.key}
-                      className="radar-map-tile"
-                      src={tile.src}
-                      alt=""
-                      aria-hidden="true"
-                      style={{ left: `${tile.left}px`, top: `${tile.top}px` }}
+                      className="radar-map-overlay"
+                      src={imageSrc}
+                      alt="Looping CHMI MAX_Z radar animation over a map base"
+                      style={{
+                        left: `${layout.overlayLeft}px`,
+                        top: `${layout.overlayTop}px`,
+                        width: `${layout.overlayWidth}px`,
+                        height: `${layout.overlayHeight}px`,
+                      }}
                     />
-                  ))}
-
-                  <img
-                    className="radar-map-overlay"
-                    src={imageSrc}
-                    alt="Looping CHMI MAX_Z radar animation over a map base"
-                    style={{
-                      left: `${layout.overlayLeft}px`,
-                      top: `${layout.overlayTop}px`,
-                      width: `${layout.overlayWidth}px`,
-                      height: `${layout.overlayHeight}px`,
-                    }}
-                  />
-                </div>
-
-                <div className="radar-map-attribution">
-                  map ©{" "}
-                  <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
-                    OpenStreetMap
-                  </a>
-                </div>
-                <div className="radar-map-zoom">z{layout.zoom}</div>
-                {animationFrames.length > 1 ? (
-                  <div className="radar-map-loop">
-                    {frameIndex + 1}/{animationFrames.length}
                   </div>
-                ) : null}
-                <div className="radar-frame-preload-strip" aria-hidden="true">
-                  {animationFrames.map((frame) => (
-                    <img key={frame.filename} src={frame.imageUrl ?? undefined} alt="" />
-                  ))}
+
+                  <div className="radar-map-attribution">
+                    map ©{" "}
+                    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+                      OpenStreetMap
+                    </a>
+                  </div>
+                  <div className="radar-map-zoom">z{layout.zoom}</div>
+                  {animationFrames.length > 1 ? (
+                    <div className="radar-map-loop">
+                      {frameIndex + 1}/{animationFrames.length}
+                    </div>
+                  ) : null}
+                  <div className="radar-frame-preload-strip" aria-hidden="true">
+                    {animationFrames.map((frame) => (
+                      <img key={frame.filename} src={frame.imageUrl ?? undefined} alt="" />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="radar-map-loading">
+                  <Spinner size={24} />
                 </div>
-              </>
-            ) : (
-              <div className="radar-map-loading">
-                <Spinner size={24} />
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          <MetricGrid
-            rows={[
-              ["Frame", formatDateTime(activeFrame?.frameTimeLocal ?? snapshot.frameTimeLocal)],
-              ["Age", activeFrame?.ageMinutes == null ? (snapshot.ageMinutes == null ? "--" : `${snapshot.ageMinutes} min`) : `${activeFrame.ageMinutes} min`],
-              ["Loop", animationFrames.length > 1 ? `${frameIndex + 1} / ${animationFrames.length}` : "1 / 1"],
-              ["Product", snapshot.product],
-              ["Checked", formatDateTime(snapshot.checkedAtUtc)],
-            ]}
-          />
+            <MetricGrid
+              rows={[
+                ["Frame", formatDateTime(activeFrame?.frameTimeLocal ?? snapshot.frameTimeLocal)],
+                ["Age", activeFrame?.ageMinutes == null ? (snapshot.ageMinutes == null ? "--" : `${snapshot.ageMinutes} min`) : `${activeFrame.ageMinutes} min`],
+                ["Loop", animationFrames.length > 1 ? `${frameIndex + 1} / ${animationFrames.length}` : "1 / 1"],
+                ["Product", snapshot.product],
+                ["Checked", formatDateTime(snapshot.checkedAtUtc)],
+              ]}
+            />
 
-          <div className="precip-footer">
-            <a className="precip-link" href={snapshot.sourceUrl} target="_blank" rel="noreferrer">
-              Open CHMI radar source
-            </a>
-            <span className="precip-note">Looping the latest {Math.max(animationFrames.length, 1)} MAX_Z frames from CHMI.</span>
+            <div className="precip-footer">
+              <a className="precip-link" href={snapshot.sourceUrl} target="_blank" rel="noreferrer">
+                Open CHMI radar source
+              </a>
+              <span className="precip-note">Looping the latest {Math.max(animationFrames.length, 1)} MAX_Z frames from CHMI.</span>
+            </div>
+          </>
+        ) : (
+          <div className="precip-empty">
+            <div className="precip-empty-title">Live radar unavailable</div>
+            <div className="precip-empty-copy">
+              {snapshot?.error ?? "CHMI radar data has not loaded yet."}
+            </div>
           </div>
-        </>
-      ) : (
-        <div className="precip-empty">
-          <div className="precip-empty-title">Live radar unavailable</div>
-          <div className="precip-empty-copy">
-            {snapshot?.error ?? "CHMI radar data has not loaded yet."}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
