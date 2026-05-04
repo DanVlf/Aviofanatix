@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Icon, Spinner } from "@blueprintjs/core";
 import type { ChmiPrecipitationSnapshot, TelemetrySnapshot } from "./lib/types";
 import { API_BASE } from "./lib/utils";
@@ -12,6 +12,163 @@ import { FramesPanel } from "./components/panels/FramesPanel";
 import { ChmiPrecipitationPanel } from "./components/panels/ChmiPrecipitationPanel";
 import { DroneViewer } from "./components/viewers/DroneViewer";
 
+type DashboardPanelId =
+  | "radar"
+  | "session"
+  | "link"
+  | "battery"
+  | "gps"
+  | "attitude"
+  | "frames";
+
+type DashboardPanelConfig = {
+  id: DashboardPanelId;
+  wide?: boolean;
+  content: ReactNode;
+};
+
+type DraggablePanelSlotProps = {
+  panelId: DashboardPanelId;
+  wide?: boolean;
+  isDragging: boolean;
+  isDragOver: boolean;
+  onDragStart: (panelId: DashboardPanelId) => void;
+  onDragOver: (panelId: DashboardPanelId) => void;
+  onDrop: (panelId: DashboardPanelId) => void;
+  onDragEnd: () => void;
+  children: ReactNode;
+};
+
+const DASHBOARD_PANEL_ORDER_KEY = "cansat.dashboard.panelOrder";
+const DEFAULT_PANEL_ORDER: DashboardPanelId[] = [
+  "radar",
+  "session",
+  "link",
+  "battery",
+  "gps",
+  "attitude",
+  "frames",
+];
+
+const isDashboardPanelId = (value: string): value is DashboardPanelId =>
+  DEFAULT_PANEL_ORDER.includes(value as DashboardPanelId);
+
+const normalizePanelOrder = (value: string[] | DashboardPanelId[]): DashboardPanelId[] => {
+  const unique: DashboardPanelId[] = [];
+  for (const item of value) {
+    if (!isDashboardPanelId(item) || unique.includes(item)) {
+      continue;
+    }
+    unique.push(item);
+  }
+  const missing = DEFAULT_PANEL_ORDER.filter((item) => !unique.includes(item));
+  return [...unique, ...missing];
+};
+
+const movePanel = (order: DashboardPanelId[], draggedId: DashboardPanelId, targetId: DashboardPanelId) => {
+  if (draggedId === targetId) {
+    return order;
+  }
+
+  const next = [...order];
+  const fromIndex = next.indexOf(draggedId);
+  const toIndex = next.indexOf(targetId);
+  if (fromIndex === -1 || toIndex === -1) {
+    return order;
+  }
+
+  next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, draggedId);
+  return next;
+};
+
+function DraggablePanelSlot({
+  panelId,
+  wide,
+  isDragging,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  children,
+}: DraggablePanelSlotProps) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [rowSpan, setRowSpan] = useState(1);
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    const content = contentRef.current;
+    if (!wrapper || !content) {
+      return;
+    }
+
+    const recalc = () => {
+      const grid = wrapper.parentElement;
+      if (!grid) {
+        return;
+      }
+
+      const gridStyle = window.getComputedStyle(grid);
+      const rowGap = parseFloat(gridStyle.rowGap || "0");
+      const autoRow = parseFloat(gridStyle.gridAutoRows || "1");
+      const contentHeight = content.getBoundingClientRect().height;
+      if (autoRow <= 0) {
+        return;
+      }
+
+      const nextSpan = Math.max(1, Math.ceil((contentHeight + rowGap) / (autoRow + rowGap)));
+      setRowSpan((current) => (current === nextSpan ? current : nextSpan));
+    };
+
+    recalc();
+    const observer = new ResizeObserver(recalc);
+    observer.observe(content);
+    window.addEventListener("resize", recalc);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", recalc);
+    };
+  }, [children]);
+
+  const handleNativeDragStart = (event: DragEvent<HTMLDivElement>) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", panelId);
+    onDragStart(panelId);
+  };
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={[
+        "dashboard-panel-slot",
+        wide ? "dashboard-panel-slot--wide" : "",
+        isDragging ? "is-dragging" : "",
+        isDragOver ? "is-drag-over" : "",
+      ].filter(Boolean).join(" ")}
+      style={{ gridRowEnd: `span ${rowSpan}` }}
+      draggable
+      onDragStart={handleNativeDragStart}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        onDragOver(panelId);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop(panelId);
+      }}
+      onDragEnd={onDragEnd}
+    >
+      <div ref={contentRef} className="dashboard-panel-slot__inner">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [chmiSnapshot, setChmiSnapshot] = useState<ChmiPrecipitationSnapshot | null>(null);
@@ -19,6 +176,25 @@ export function App() {
   const [chmiLoading, setChmiLoading] = useState(true);
   const [streamOnline, setStreamOnline] = useState(false);
   const [toastError, setToastError] = useState<string | null>(null);
+  const [panelOrder, setPanelOrder] = useState<DashboardPanelId[]>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_PANEL_ORDER;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(DASHBOARD_PANEL_ORDER_KEY);
+      if (!raw) {
+        return DEFAULT_PANEL_ORDER;
+      }
+
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? normalizePanelOrder(parsed) : DEFAULT_PANEL_ORDER;
+    } catch {
+      return DEFAULT_PANEL_ORDER;
+    }
+  });
+  const [draggedPanelId, setDraggedPanelId] = useState<DashboardPanelId | null>(null);
+  const [dragOverPanelId, setDragOverPanelId] = useState<DashboardPanelId | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastErrorRef = useRef<string | null>(null);
 
@@ -140,7 +316,74 @@ export function App() {
     return () => window.clearTimeout(timeoutId);
   }, [snapshot?.lastError]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_PANEL_ORDER_KEY, JSON.stringify(panelOrder));
+    } catch {
+      // Ignore storage failures and keep the current in-memory order.
+    }
+  }, [panelOrder]);
+
   const attitude = snapshot?.telemetry.attitude;
+  const telemetrySnapshot = snapshot as TelemetrySnapshot;
+  const panelConfigs: Record<DashboardPanelId, DashboardPanelConfig> = {
+    radar: {
+      id: "radar",
+      wide: true,
+      content: <ChmiPrecipitationPanel snapshot={chmiSnapshot} loading={chmiLoading} />,
+    },
+    session: {
+      id: "session",
+      content: <SessionPanel snapshot={telemetrySnapshot} />,
+    },
+    link: {
+      id: "link",
+      content: <LinkPanel snapshot={telemetrySnapshot} />,
+    },
+    battery: {
+      id: "battery",
+      content: <BatteryPanel snapshot={telemetrySnapshot} />,
+    },
+    gps: {
+      id: "gps",
+      content: <GpsPanel snapshot={telemetrySnapshot} />,
+    },
+    attitude: {
+      id: "attitude",
+      content: <AttitudePanel snapshot={telemetrySnapshot} />,
+    },
+    frames: {
+      id: "frames",
+      content: <FramesPanel snapshot={telemetrySnapshot} />,
+    },
+  };
+
+  const handlePanelDragStart = (panelId: DashboardPanelId) => {
+    setDraggedPanelId(panelId);
+    setDragOverPanelId(panelId);
+  };
+
+  const handlePanelDragOver = (targetId: DashboardPanelId) => {
+    if (!draggedPanelId || draggedPanelId === targetId) {
+      return;
+    }
+    setDragOverPanelId(targetId);
+  };
+
+  const handlePanelDrop = (targetId: DashboardPanelId) => {
+    if (!draggedPanelId) {
+      return;
+    }
+
+    setPanelOrder((current) => movePanel(current, draggedPanelId, targetId));
+    setDraggedPanelId(null);
+    setDragOverPanelId(null);
+  };
+
+  const resetDragState = () => {
+    setDraggedPanelId(null);
+    setDragOverPanelId(null);
+  };
 
   return (
     <div className="app-shell">
@@ -171,13 +414,27 @@ export function App() {
           <div className="dashboard">
             <div className="dashboard-left">
               <div className="panels-grid">
-                <ChmiPrecipitationPanel snapshot={chmiSnapshot} loading={chmiLoading} />
-                <SessionPanel snapshot={snapshot} />
-                <LinkPanel snapshot={snapshot} />
-                <BatteryPanel snapshot={snapshot} />
-                <GpsPanel snapshot={snapshot} />
-                <AttitudePanel snapshot={snapshot} />
-                <FramesPanel snapshot={snapshot} />
+                {panelOrder.map((panelId) => {
+                  const panel = panelConfigs[panelId];
+                  const isDragging = draggedPanelId === panelId;
+                  const isDragOver = dragOverPanelId === panelId && draggedPanelId !== panelId;
+
+                  return (
+                    <DraggablePanelSlot
+                      key={panel.id}
+                      panelId={panel.id}
+                      wide={panel.wide}
+                      isDragging={isDragging}
+                      isDragOver={isDragOver}
+                      onDragStart={handlePanelDragStart}
+                      onDragOver={handlePanelDragOver}
+                      onDrop={handlePanelDrop}
+                      onDragEnd={resetDragState}
+                    >
+                      {panel.content}
+                    </DraggablePanelSlot>
+                  );
+                })}
               </div>
             </div>
             <div className="dashboard-right">
