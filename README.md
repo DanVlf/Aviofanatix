@@ -16,6 +16,7 @@ Real-time FPV telemetry dashboard with a Flask backend, React + TypeScript front
 ## Run backend
 
 ```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
 python backend/app.py
