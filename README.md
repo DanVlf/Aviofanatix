@@ -1,7 +1,10 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 # Aviofanatix
 Aviofanatix Dashboard for Radiomaster FPV Data.
 =======
+=======
+>>>>>>> issue-005-chmi-single-live-radar-panel
 # Cansat Telemetry App
 
 Project structure:
@@ -37,4 +40,7 @@ Run the terminal telemetry dashboard directly:
 source /Users/dan/Documents/Cansat/.venv/bin/activate
 python /Users/dan/Documents/Cansat/backend/fpv_radio_live.py
 ```
+<<<<<<< HEAD
 >>>>>>> 9dab241 (init)
+=======
+>>>>>>> issue-005-chmi-single-live-radar-panel
