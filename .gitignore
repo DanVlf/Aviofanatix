@@ -1,52 +1,30 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
-.env
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-=======
-=======
->>>>>>> issue-005-chmi-single-live-radar-panel
+# Python / Virtual Env
 .venv/
 __pycache__/
 *.pyc
-.DS_Store
+backend/__pycache__/
+
+# Node / React
+node_modules/
 frontend/node_modules/
 frontend/dist/
-backend/__pycache__/
-<<<<<<< HEAD
->>>>>>> 9dab241 (init)
-=======
->>>>>>> issue-005-chmi-single-live-radar-panel
+/.pnp
+.pnp.js
+/coverage
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
+
+# OS / IDE
+.DS_Store
+*.pem
+.env
+.env*.local
+.vercel
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
