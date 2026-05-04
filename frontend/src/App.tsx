@@ -70,12 +70,19 @@ export function App() {
           }
 
           return {
+            frames: [],
             ok: false,
             stale: false,
             provider: "CHMI",
-            product: "pseudocappi2km",
-            label: "Live radar over the Czech Republic",
-            sourceUrl: "https://opendata.chmi.cz/meteorology/weather/radar/composite/pseudocappi2km/png/",
+            product: "maxz",
+            label: "Live MAX_Z radar over the Czech Republic",
+            sourceUrl: "https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png/",
+            bounds: {
+              south: 48.047,
+              west: 11.267,
+              north: 52.167,
+              east: 20.77,
+            },
             imagePath: null,
             imageUrl: null,
             filename: null,

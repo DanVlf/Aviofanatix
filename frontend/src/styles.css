@@ -433,42 +433,85 @@ body {
   max-width: 40ch;
 }
 
-/* Toto nahrazuje tvůj původní .radar-single-wrap */
-.radar-single-wrap {
+.radar-map-stage {
   position: relative;
   overflow: hidden;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
-  background-color: #1a1a1a; /* Tmavé pozadí je klíčové pro viditelnost srážek */
-  aspect-ratio: 1.65; /* Poměr stran pro mapu ČR, uprav dle potřeby */
+  background: #d7e1ea;
+  min-height: clamp(360px, 48vh, 560px);
 }
 
-/* Přidáváme podkladovou mapu přímo pod radar */
-.radar-single-wrap::before {
-  content: "";
+.radar-map-canvas {
   position: absolute;
   inset: 0;
-  opacity: 0.4;
-  background-image: url('https://www.chmi.cz/files/portal/docs/meteo/rad/data/pozadi.png');
-  background-size: cover;
-  background-position: center;
-  z-index: 1;
 }
 
-.radar-single-image {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: auto;
-  z-index: 2;
-
-  mix-blend-mode: screen; 
-  
-  /* Pokud je pozadí radaru bílé, použij místo screen 'multiply' */
-  /* mix-blend-mode: multiply; */
-
-  filter: contrast(1.2) brightness(1.2);
+.radar-map-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  filter: saturate(0.62) brightness(0.92) contrast(0.9);
 }
+
+.radar-map-overlay {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+  filter: none;
+}
+
+.radar-map-attribution,
+.radar-map-zoom,
+.radar-map-loop {
+  position: absolute;
+  z-index: 5;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #1f2937;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.radar-map-attribution {
+  left: 12px;
+  bottom: 12px;
+}
+
+.radar-map-attribution a {
+  color: inherit;
+}
+
+.radar-map-zoom {
+  right: 12px;
+  bottom: 12px;
+}
+
+.radar-map-loop {
+  top: 12px;
+  right: 12px;
+}
+
+.radar-map-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.radar-frame-preload-strip {
+  display: none;
+}
+
 .precip-footer {
   display: flex;
   align-items: center;

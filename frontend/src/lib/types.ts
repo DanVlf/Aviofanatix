@@ -34,12 +34,26 @@ export type TelemetrySnapshot = {
 };
 
 export type ChmiPrecipitationSnapshot = {
+  frames: Array<{
+    filename: string;
+    imagePath: string;
+    imageUrl: string | null;
+    frameTimeUtc: string;
+    frameTimeLocal: string;
+    ageMinutes: number | null;
+  }>;
   ok: boolean;
   stale: boolean;
   provider: string;
   product: string;
   label: string;
   sourceUrl: string;
+  bounds: {
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  };
   imagePath: string | null;
   imageUrl: string | null;
   filename: string | null;
