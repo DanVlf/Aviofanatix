@@ -90,7 +90,7 @@ def decode_gps(payload: bytes) -> dict[str, object] | None:
     return {
         "latitude":       _i32be(payload[0:4]) / 10_000_000,
         "longitude":      _i32be(payload[4:8]) / 10_000_000,
-        "groundspeedKmh": _u16be(payload[8:10]) / 100.0,
+        "groundspeedKmh": _u16be(payload[8:10]) / 10.0,
         "headingDeg":     _u16be(payload[10:12]) / 100.0,
         "altitudeM":      _u16be(payload[12:14]) - 1000,
         "satellites":     payload[14],
