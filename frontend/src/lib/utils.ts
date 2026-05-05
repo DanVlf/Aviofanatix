@@ -6,6 +6,19 @@ export const fmt = (value?: number | string | null, suffix = "", fallback = "--"
   return `${value}${suffix}`;
 };
 
+export const fmtFixed = (
+  value: number | string | null | undefined,
+  digits: number,
+  suffix = "",
+  fallback = "--",
+) => {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "number") {
+    return `${value.toFixed(digits)}${suffix}`;
+  }
+  return `${value}${suffix}`;
+};
+
 export const defaultApiBase = (() => {
   if (typeof window === "undefined") return "http://localhost:5001";
   return `${window.location.protocol}//${window.location.hostname}:5001`;

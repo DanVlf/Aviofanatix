@@ -16,14 +16,15 @@ export function BatteryPanel({ snapshot }: Props) {
         <h3>Battery</h3>
         <Tag intent={intent}>{fmt(battery.remainingPct, "%")}</Tag>
       </div>
-      <ProgressBar value={pct / 100} animate={false} intent={pct > 20 ? "success" : "danger"} />
+      <ProgressBar value={pct / 100} animate={false} intent={intent} />
       <div style={{ marginTop: "1rem" }}>
         <MetricGrid
           rows={[
             ["Voltage", fmt(battery.voltageV, " V")],
             ["Current", fmt(battery.currentA, " A")],
-            ["Capacity", fmt(battery.capacityMah, " mAh")],
-            ["Remaining", fmt(battery.remainingPct, "%")],
+            ["Used capacity", fmt(battery.capacityMah, " mAh")],
+            ["Capacity max", fmt(battery.capacityMaxMah, " mAh")],
+            ["Remaining est.", fmt(battery.remainingCapacityMah, " mAh")],
           ]}
         />
       </div>
