@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Spinner, Tag } from "@blueprintjs/core";
 import type { ChmiPrecipitationSnapshot } from "../../lib/types";
+import { buildMapLayout, projectPointToLayout, useElementSize, type GeoBounds } from "../../lib/map";
 import { MetricGrid } from "../common/MetricGrid";
 
 type Props = {
@@ -8,32 +9,13 @@ type Props = {
   loading: boolean;
 };
 
-type RadarBounds = ChmiPrecipitationSnapshot["bounds"];
-
-type TileSpec = {
-  key: string;
-  src: string;
-  left: number;
-  top: number;
-};
-
-type LayoutSpec = {
-  tiles: TileSpec[];
-  overlayLeft: number;
-  overlayTop: number;
-  overlayWidth: number;
-  overlayHeight: number;
-  zoom: number;
-};
-
-const TILE_SIZE = 256;
-const DEFAULT_BOUNDS: RadarBounds = {
+const DEFAULT_BOUNDS: ChmiPrecipitationSnapshot["bounds"] = {
   south: 48.047,
   west: 11.267,
   north: 52.167,
   east: 20.77,
 };
-const CZECH_FOCUS_BOUNDS: RadarBounds = {
+const CZECH_FOCUS_BOUNDS: GeoBounds = {
   south: 48.35,
   west: 11.7,
   north: 51.2,
@@ -54,134 +36,26 @@ const formatDateTime = (value: string | null) => {
   }).format(date);
 };
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-const projectWebMercator = (lat: number, lng: number, zoom: number) => {
-  const limitedLat = clamp(lat, -85.05112878, 85.05112878);
-  const sinLat = Math.sin((limitedLat * Math.PI) / 180);
-  const worldSize = TILE_SIZE * 2 ** zoom;
-
-  return {
-    x: ((lng + 180) / 360) * worldSize,
-    y: (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * worldSize,
-  };
-};
-
-const getTileUrl = (zoom: number, x: number, y: number) => {
-  const limit = 2 ** zoom;
-  if (y < 0 || y >= limit) {
-    return null;
-  }
-
-  const wrappedX = ((x % limit) + limit) % limit;
-  return `https://tile.openstreetmap.org/${zoom}/${wrappedX}/${y}.png`;
-};
-
-const chooseZoom = (bounds: RadarBounds, width: number, height: number, padding: number) => {
-  for (let zoom = 10; zoom >= 5; zoom -= 1) {
-    const northWest = projectWebMercator(bounds.north, bounds.west, zoom);
-    const southEast = projectWebMercator(bounds.south, bounds.east, zoom);
-    const viewportWidth = southEast.x - northWest.x;
-    const viewportHeight = southEast.y - northWest.y;
-
-    if (viewportWidth <= width - padding * 2 && viewportHeight <= height - padding * 2) {
-      return zoom;
-    }
-  }
-
-  return 5;
-};
-
-function useElementSize<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) {
-      return;
-    }
-
-    const update = () => {
-      setSize({
-        width: node.clientWidth,
-        height: node.clientHeight,
-      });
-    };
-
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, []);
-
-  return { ref, size };
-}
-
-const buildMapLayout = (overlayBounds: RadarBounds, viewportBounds: RadarBounds, width: number, height: number): LayoutSpec | null => {
-  if (width < 32 || height < 32) {
-    return null;
-  }
-
-  const padding = 8;
-  const zoom = chooseZoom(viewportBounds, width, height, padding);
-  const viewportNorthWest = projectWebMercator(viewportBounds.north, viewportBounds.west, zoom);
-  const viewportSouthEast = projectWebMercator(viewportBounds.south, viewportBounds.east, zoom);
-  const viewportWidth = viewportSouthEast.x - viewportNorthWest.x;
-  const viewportHeight = viewportSouthEast.y - viewportNorthWest.y;
-  const overlayNorthWest = projectWebMercator(overlayBounds.north, overlayBounds.west, zoom);
-  const overlaySouthEast = projectWebMercator(overlayBounds.south, overlayBounds.east, zoom);
-  const overlayWidth = overlaySouthEast.x - overlayNorthWest.x;
-  const overlayHeight = overlaySouthEast.y - overlayNorthWest.y;
-  const extraX = Math.max(0, width - viewportWidth);
-  const extraY = Math.max(0, height - viewportHeight);
-  const originX = viewportNorthWest.x - extraX / 2;
-  const originY = viewportNorthWest.y - extraY / 2;
-  const endX = originX + width;
-  const endY = originY + height;
-
-  const tileStartX = Math.floor(originX / TILE_SIZE);
-  const tileEndX = Math.floor((endX - 1) / TILE_SIZE);
-  const tileStartY = Math.floor(originY / TILE_SIZE);
-  const tileEndY = Math.floor((endY - 1) / TILE_SIZE);
-
-  const tiles: TileSpec[] = [];
-  for (let tileY = tileStartY; tileY <= tileEndY; tileY += 1) {
-    for (let tileX = tileStartX; tileX <= tileEndX; tileX += 1) {
-      const src = getTileUrl(zoom, tileX, tileY);
-      if (!src) {
-        continue;
-      }
-
-      tiles.push({
-        key: `${zoom}-${tileX}-${tileY}`,
-        src,
-        left: tileX * TILE_SIZE - originX,
-        top: tileY * TILE_SIZE - originY,
-      });
-    }
-  }
-
-  return {
-    tiles,
-    overlayLeft: overlayNorthWest.x - originX,
-    overlayTop: overlayNorthWest.y - originY,
-    overlayWidth,
-    overlayHeight,
-    zoom,
-  };
-};
-
 export function ChmiPrecipitationPanel({ snapshot, loading }: Props) {
   const statusIntent = snapshot?.ok ? (snapshot.stale ? "warning" : "success") : "danger";
   const statusLabel = snapshot?.ok ? (snapshot.stale ? "cached" : "live") : "offline";
   const overlayBounds = snapshot?.bounds ?? DEFAULT_BOUNDS;
   const { ref, size } = useElementSize<HTMLDivElement>();
-  const layout = useMemo(
-    () => buildMapLayout(overlayBounds, CZECH_FOCUS_BOUNDS, size.width, size.height),
-    [overlayBounds, size.height, size.width],
-  );
+  const layout = useMemo(() => buildMapLayout(CZECH_FOCUS_BOUNDS, size.width, size.height), [size.height, size.width]);
+  const overlayLayout = useMemo(() => {
+    if (!layout) {
+      return null;
+    }
+
+    const northWest = projectPointToLayout(layout, overlayBounds.north, overlayBounds.west);
+    const southEast = projectPointToLayout(layout, overlayBounds.south, overlayBounds.east);
+    return {
+      left: northWest.x,
+      top: northWest.y,
+      width: southEast.x - northWest.x,
+      height: southEast.y - northWest.y,
+    };
+  }, [layout, overlayBounds]);
   const animationFrames = useMemo(() => {
     const frames = snapshot?.frames ?? [];
     return [...frames].reverse();
@@ -231,7 +105,7 @@ export function ChmiPrecipitationPanel({ snapshot, loading }: Props) {
         ) : snapshot?.ok && imageSrc ? (
           <>
             <div className="radar-map-stage" ref={ref}>
-              {layout ? (
+              {layout && overlayLayout ? (
                 <>
                   <div className="radar-map-canvas">
                     {layout.tiles.map((tile) => (
@@ -250,10 +124,10 @@ export function ChmiPrecipitationPanel({ snapshot, loading }: Props) {
                       src={imageSrc}
                       alt="Looping CHMI MAX_Z radar animation over a map base"
                       style={{
-                        left: `${layout.overlayLeft}px`,
-                        top: `${layout.overlayTop}px`,
-                        width: `${layout.overlayWidth}px`,
-                        height: `${layout.overlayHeight}px`,
+                        left: `${overlayLayout.left}px`,
+                        top: `${overlayLayout.top}px`,
+                        width: `${overlayLayout.width}px`,
+                        height: `${overlayLayout.height}px`,
                       }}
                     />
                   </div>

@@ -8,7 +8,8 @@ import { LinkPanel } from "./components/panels/LinkPanel";
 import { BatteryPanel } from "./components/panels/BatteryPanel";
 import { GpsPanel } from "./components/panels/GpsPanel";
 import { AttitudePanel } from "./components/panels/AttitudePanel";
-import { FramesPanel } from "./components/panels/FramesPanel";
+import { FlightPathPanel } from "./components/panels/FlightPathPanel";
+import { RecordingPanel } from "./components/panels/RecordingPanel";
 import { ChmiPrecipitationPanel } from "./components/panels/ChmiPrecipitationPanel";
 import { DroneViewer } from "./components/viewers/DroneViewer";
 
@@ -18,8 +19,9 @@ type DashboardPanelId =
   | "link"
   | "battery"
   | "gps"
-  | "attitude"
-  | "frames";
+  | "flightPath"
+  | "recording"
+  | "attitude";
 
 type DashboardPanelConfig = {
   id: DashboardPanelId;
@@ -46,8 +48,9 @@ const DEFAULT_PANEL_ORDER: DashboardPanelId[] = [
   "link",
   "battery",
   "gps",
+  "flightPath",
+  "recording",
   "attitude",
-  "frames",
 ];
 
 const isDashboardPanelId = (value: string): value is DashboardPanelId =>
@@ -348,13 +351,19 @@ export function App() {
       id: "gps",
       content: <GpsPanel snapshot={telemetrySnapshot} />,
     },
+    flightPath: {
+      id: "flightPath",
+      wide: true,
+      content: <FlightPathPanel snapshot={telemetrySnapshot} />,
+    },
+    recording: {
+      id: "recording",
+      wide: true,
+      content: <RecordingPanel liveSnapshot={telemetrySnapshot} />,
+    },
     attitude: {
       id: "attitude",
       content: <AttitudePanel snapshot={telemetrySnapshot} />,
-    },
-    frames: {
-      id: "frames",
-      content: <FramesPanel snapshot={telemetrySnapshot} />,
     },
   };
 

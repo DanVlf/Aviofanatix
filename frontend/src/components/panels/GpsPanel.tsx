@@ -1,7 +1,7 @@
 import { Tag } from "@blueprintjs/core";
 import type { TelemetrySnapshot } from "../../lib/types";
 import { MetricGrid } from "../common/MetricGrid";
-import { fmt } from "../../lib/utils";
+import { fmt, fmtFixed } from "../../lib/utils";
 
 type Props = { snapshot: TelemetrySnapshot };
 
@@ -16,9 +16,10 @@ export function GpsPanel({ snapshot }: Props) {
       </div>
       <MetricGrid
         rows={[
-          ["Latitude", fmt(gps.latitude)],
-          ["Longitude", fmt(gps.longitude)],
-          ["Speed", fmt(gps.groundspeedKmh, " km/h")],
+          ["Latitude", fmtFixed(gps.latitude, 6)],
+          ["Longitude", fmtFixed(gps.longitude, 6)],
+          ["Ground speed", fmt(gps.groundspeedKmh, " km/h")],
+          ["Vertical speed", fmt(gps.verticalSpeedMps, " m/s")],
           ["Heading", fmt(gps.headingDeg, " °")],
           ["Altitude", fmt(gps.altitudeM, " m")],
           ["Satellites", fmt(gps.satellites)],

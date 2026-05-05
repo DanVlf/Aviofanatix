@@ -57,6 +57,10 @@ class RadioTelemetryService:
         with self._lock:
             return self._snapshot_locked()
 
+    def snapshot_with_version(self) -> tuple[int, dict[str, Any]]:
+        with self._lock:
+            return self._version, self._snapshot_locked()
+
     def list_ports(self) -> dict[str, Any]:
         snap = list_serial_ports_snapshot()
         with self._lock:

@@ -4,7 +4,7 @@ Flask backend — only HTTP routes.
 
 All business logic lives in the sub-packages:
   crsf/         — protocol constants, parser, decoders
-  telemetry/    — TelemetryState (collected values), serial I/O, service
+  telemetry/    — TelemetryState (collected values), serial I/O, service, recording
   radar/        — CHMI precipitation feed
 """
 
@@ -16,7 +16,8 @@ import os
 from flask import Flask, Response, jsonify, request, stream_with_context
 from flask_cors import CORS
 
-from radar.chmi import CHMI_MAXZ_FILENAME_RE, CHMI_MAXZ_INDEX_URL, ChmiPrecipitationFeed
+from radar.chmi import CHMI_MAXZ_FILENAME_RE, ChmiPrecipitationFeed
+from telemetry.recording import RecordingService
 from telemetry.serial_io import DEFAULT_BAUD
 from telemetry.service import RadioTelemetryService
 
@@ -39,6 +40,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 service = RadioTelemetryService()
 chmi_feed = ChmiPrecipitationFeed()
+recorder = RecordingService(service)
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +94,7 @@ def health() -> Response:
         "frontendPort":    FRONTEND_PORT,
         "connectionState": snap["connectionState"],
         "connected":       snap["connected"],
+        "recording":       recorder.status(),
     })
 
 
@@ -142,6 +145,51 @@ def stream() -> Response:
     response.headers["Cache-Control"] = "no-cache"
     response.headers["X-Accel-Buffering"] = "no"
     return response
+
+
+# ---------------------------------------------------------------------------
+# Routes — recording
+# ---------------------------------------------------------------------------
+
+@app.get("/api/recordings")
+def recordings_list() -> Response:
+    return jsonify({
+        "recordings": recorder.list_recordings(),
+        "status": recorder.status(),
+    })
+
+
+@app.post("/api/recordings/start")
+def recordings_start() -> Response:
+    return jsonify(recorder.start())
+
+
+@app.post("/api/recordings/stop")
+def recordings_stop() -> Response:
+    return jsonify(recorder.stop())
+
+
+@app.get("/api/recordings/status")
+def recordings_status() -> Response:
+    return jsonify(recorder.status())
+
+
+@app.get("/api/recordings/<filename>")
+def recordings_load(filename: str) -> Response:
+    frames = recorder.load_recording(filename)
+    if frames is None:
+        return Response("Recording not found.", status=404, mimetype="text/plain")
+    return jsonify({
+        "filename": filename,
+        "frameCount": len(frames),
+        "frames": frames,
+    })
+
+
+@app.delete("/api/recordings/<filename>")
+def recordings_delete(filename: str) -> Response:
+    deleted = recorder.delete_recording(filename)
+    return jsonify({"deleted": deleted, "filename": filename})
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,22 @@ type Props = {
   yaw?: number;
 };
 
+type RotatableObject = {
+  rotation: {
+    order: string;
+    x: number;
+    y: number;
+    z: number;
+  };
+};
+
+const applyTelemetryRotation = (object: RotatableObject, pitch: number, roll: number, yaw: number) => {
+  object.rotation.order = "YXZ";
+  object.rotation.x = THREE.MathUtils.degToRad(pitch);
+  object.rotation.y = THREE.MathUtils.degToRad(yaw);
+  object.rotation.z = THREE.MathUtils.degToRad(roll);
+};
+
 export function DroneViewer({ glbUrl, pitch = 0, roll = 0, yaw = 0 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<{
@@ -88,6 +104,7 @@ export function DroneViewer({ glbUrl, pitch = 0, roll = 0, yaw = 0 }: Props) {
     });
 
     scene.add(drone);
+    applyTelemetryRotation(drone, pitch, roll, yaw);
 
     let isDragging = false;
     let prevX = 0;
@@ -122,9 +139,6 @@ export function DroneViewer({ glbUrl, pitch = 0, roll = 0, yaw = 0 }: Props) {
       camera.position.y = Math.sin(manualPitch) * 4.5 + 1;
       camera.lookAt(0, 0, 0);
 
-      drone.rotation.x = (pitch * Math.PI) / 180;
-      drone.rotation.z = (roll * Math.PI) / 180;
-
       renderer.render(scene, camera);
     };
     animate();
@@ -156,8 +170,7 @@ export function DroneViewer({ glbUrl, pitch = 0, roll = 0, yaw = 0 }: Props) {
   useEffect(() => {
     const s = sceneRef.current;
     if (!s) return;
-    s.drone.rotation.x = (pitch * Math.PI) / 180;
-    s.drone.rotation.z = (roll * Math.PI) / 180;
+    applyTelemetryRotation(s.drone as RotatableObject, pitch, roll, yaw);
   }, [pitch, roll, yaw]);
 
   useEffect(() => {
@@ -176,12 +189,13 @@ export function DroneViewer({ glbUrl, pitch = 0, roll = 0, yaw = 0 }: Props) {
           const maxDim = Math.max(size.x, size.y, size.z);
           model.position.sub(center);
           model.scale.setScalar(2 / maxDim);
+          applyTelemetryRotation(model, pitch, roll, yaw);
           s.scene.add(model);
           (s as any).drone = model;
         });
       })
       .catch(() => {});
-  }, [fileInput]);
+  }, [fileInput, pitch, roll, yaw]);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

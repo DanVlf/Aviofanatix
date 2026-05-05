@@ -11,6 +11,41 @@ export type PortInfo = {
   label: string;
 };
 
+export type TelemetryTrackPoint = {
+  latitude: number;
+  longitude: number;
+  altitudeM?: number;
+};
+
+export type TelemetryBattery = {
+  voltageV?: number;
+  currentA?: number;
+  capacityMah?: number;
+  capacityMaxMah?: number;
+  remainingCapacityMah?: number;
+  remainingPct?: number | null;
+  reportedRemainingPct?: number;
+  [key: string]: number | string | null | undefined;
+};
+
+export type TelemetryGps = {
+  latitude?: number;
+  longitude?: number;
+  groundspeedKmh?: number;
+  headingDeg?: number;
+  altitudeM?: number;
+  satellites?: number;
+  verticalSpeedMps?: number | null;
+  [key: string]: number | string | null | undefined;
+};
+
+export type TelemetryAttitude = {
+  pitchDeg?: number;
+  rollDeg?: number;
+  yawDeg?: number;
+  [key: string]: number | string | null | undefined;
+};
+
 export type TelemetrySnapshot = {
   connectionState: "disconnected" | "connecting" | "connected" | "error";
   connected: boolean;
@@ -24,13 +59,35 @@ export type TelemetrySnapshot = {
     framesPerSecond: number;
     frameCounts: Record<string, number>;
     linkStats: Record<string, number | string>;
-    battery: Record<string, number | string>;
-    gps: Record<string, number | string>;
-    attitude: Record<string, number | string>;
+    battery: TelemetryBattery;
+    gps: TelemetryGps;
+    gpsTrack: TelemetryTrackPoint[];
+    attitude: TelemetryAttitude;
     flightMode: string | null;
     timing: Record<string, number | string>;
     unknownFrames: string[];
   };
+};
+
+export type RecordingStatus = {
+  recording: boolean;
+  filename: string | null;
+  startedAtUtc: string | null;
+  elapsedSeconds: number | null;
+  frameCount: number;
+};
+
+export type RecordingSummary = {
+  filename: string;
+  sizeBytes: number;
+  frameCount: number;
+  modifiedUtc: string;
+};
+
+export type RecordingEntry = {
+  t: string;
+  elapsed: number;
+  snap: TelemetrySnapshot;
 };
 
 export type ChmiPrecipitationSnapshot = {

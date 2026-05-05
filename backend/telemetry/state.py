@@ -23,6 +23,91 @@ from crsf.decoders import (
     decode_remote_related,
 )
 
+BATTERY_FULL_VOLTAGE = 12.6
+BATTERY_EMPTY_VOLTAGE = 9.9
+BATTERY_MAX_CAPACITY_MAH = 850
+GPS_TRACK_LIMIT = 1_200
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(value, upper))
+
+
+def _normalize_battery(decoded: dict[str, object]) -> dict[str, object]:
+    voltage = decoded.get("voltageV")
+    reported_remaining = decoded.get("remainingPct")
+    remaining_pct: int | None = None
+    if isinstance(voltage, (int, float)):
+        ratio = (float(voltage) - BATTERY_EMPTY_VOLTAGE) / (BATTERY_FULL_VOLTAGE - BATTERY_EMPTY_VOLTAGE)
+        remaining_pct = int(round(_clamp(ratio, 0.0, 1.0) * 100))
+
+    used_capacity = decoded.get("capacityMah")
+    remaining_capacity: int | None = None
+    if isinstance(used_capacity, (int, float)):
+        remaining_capacity = max(0, int(round(BATTERY_MAX_CAPACITY_MAH - float(used_capacity))))
+
+    return {
+        **decoded,
+        "reportedRemainingPct": reported_remaining,
+        "remainingPct": remaining_pct,
+        "capacityMaxMah": BATTERY_MAX_CAPACITY_MAH,
+        "remainingCapacityMah": remaining_capacity,
+    }
+
+
+def _update_vertical_speed(state: "TelemetryState", gps: dict[str, object], sample_time: float) -> None:
+    altitude = gps.get("altitudeM")
+    if not isinstance(altitude, (int, float)):
+        gps["verticalSpeedMps"] = None
+        return
+
+    state.altitude_samples.append((sample_time, float(altitude)))
+    state.altitude_samples = state.altitude_samples[-5:]
+    if len(state.altitude_samples) < 2:
+        gps["verticalSpeedMps"] = None
+        return
+
+    oldest_time, oldest_altitude = state.altitude_samples[0]
+    delta_time = sample_time - oldest_time
+    if delta_time <= 0:
+        gps["verticalSpeedMps"] = None
+        return
+
+    gps["verticalSpeedMps"] = round((float(altitude) - oldest_altitude) / delta_time, 2)
+
+
+def _append_gps_track(state: "TelemetryState", gps: dict[str, object]) -> None:
+    latitude = gps.get("latitude")
+    longitude = gps.get("longitude")
+    altitude = gps.get("altitudeM")
+    if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+        return
+
+    point: dict[str, float] = {
+        "latitude": float(latitude),
+        "longitude": float(longitude),
+    }
+    if isinstance(altitude, (int, float)):
+        point["altitudeM"] = float(altitude)
+
+    previous = state.gps_track[-1] if state.gps_track else None
+    if previous is not None:
+        previous_altitude = previous.get("altitudeM")
+        same_altitude = (
+            isinstance(previous_altitude, (int, float))
+            and isinstance(point.get("altitudeM"), (int, float))
+            and abs(float(previous_altitude) - float(point["altitudeM"])) < 0.5
+        )
+        if (
+            abs(previous["latitude"] - point["latitude"]) < 1e-7
+            and abs(previous["longitude"] - point["longitude"]) < 1e-7
+            and (same_altitude or ("altitudeM" not in previous and "altitudeM" not in point))
+        ):
+            return
+
+    state.gps_track.append(point)
+    state.gps_track = state.gps_track[-GPS_TRACK_LIMIT:]
+
 
 @dataclass
 class TelemetryState:
@@ -68,7 +153,10 @@ class TelemetryState:
       voltageV        – Battery voltage in V (float, 0.1 V resolution)
       currentA        – Current draw in A (float, 0.1 A resolution)
       capacityMah     – Used capacity in mAh (int)
-      remainingPct    – Remaining capacity in % (int, 0–100)
+      capacityMaxMah  – Configured full capacity in mAh (int)
+      remainingCapacityMah – Estimated remaining capacity in mAh (int)
+      remainingPct    – Derived remaining capacity in % from battery voltage (int, 0–100)
+      reportedRemainingPct – Raw transmitter-reported remaining % (int, 0–100)
     """
 
     # ------------------------------------------------------------------
@@ -79,11 +167,18 @@ class TelemetryState:
     Keys:
       latitude        – Decimal degrees (float, 1e-7 resolution)
       longitude       – Decimal degrees (float, 1e-7 resolution)
-      groundspeedKmh  – Ground speed in km/h (float, 0.01 resolution)
+      groundspeedKmh  – Ground speed in km/h (float, 0.1 resolution)
       headingDeg      – True heading in degrees (float, 0.01 resolution)
       altitudeM       – Altitude in metres above sea level (int, offset -1000)
       satellites      – Number of locked GPS satellites (int)
+      verticalSpeedMps – Derived climb/sink rate in m/s (float)
     """
+
+    gps_track: list[dict[str, float]] = field(default_factory=list)
+    """Bounded flight path history of distinct GPS points for map rendering."""
+
+    altitude_samples: list[tuple[float, float]] = field(default_factory=list)
+    """Recent monotonic-time altitude samples used to derive vertical speed."""
 
     # ------------------------------------------------------------------
     # Attitude  (frame type 0x1E)
@@ -143,6 +238,7 @@ class TelemetryState:
             "linkStats":         self.link_stats,
             "battery":           self.battery,
             "gps":               self.gps,
+            "gpsTrack":          list(self.gps_track),
             "attitude":          self.attitude,
             "flightMode":        self.flight_mode,
             "timing":            self.timing,
@@ -165,12 +261,15 @@ def update_telemetry_state(state: TelemetryState, frames: list[CrsfFrame]) -> No
         elif frame.frame_type == 0x08:
             decoded = decode_battery(frame.payload)
             if decoded:
-                state.battery = decoded
+                state.battery = _normalize_battery(decoded)
 
         elif frame.frame_type == 0x02:
             decoded = decode_gps(frame.payload)
             if decoded:
+                sample_time = state.last_frame_at if state.last_frame_at is not None else time.monotonic()
+                _update_vertical_speed(state, decoded, sample_time)
                 state.gps = decoded
+                _append_gps_track(state, decoded)
 
         elif frame.frame_type == 0x1E:
             decoded = decode_attitude(frame.payload)
